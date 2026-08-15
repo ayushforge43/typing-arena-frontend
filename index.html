@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Typing Battle Arena</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial;
+    background: url("https://images.unsplash.com/photo-1515879218367-8466d910aaa4") no-repeat center/cover;
+    height: 100vh;
+}
+
+.overlay {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+}
+
+.container {
+    position: relative;
+    z-index: 1;
+    width: 750px;
+    margin: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.1);
+    padding: 20px;
+    border-radius: 15px;
+    color: white;
+}
+
+#textDisplay {
+    background: white;
+    color: black;
+    padding: 12px;
+    border-radius: 10px;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.correct { color: green; }
+.wrong { color: red; }
+
+textarea {
+    width: 100%;
+    height: 120px;
+    margin-top: 10px;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+
+/* POPUP */
+.popup {
+    position: fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    background: rgba(0,0,0,0.85);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    opacity:0;
+    pointer-events:none;
+    transition:0.3s;
+    z-index:9999;
+}
+
+.popup.show {
+    opacity:1;
+    pointer-events:auto;
+}
+
+.popup-box {
+    background:white;
+    color:black;
+    padding:30px;
+    border-radius:12px;
+    text-align:center;
+    transform:scale(0.7);
+    transition:0.3s;
+}
+
+.popup.show .popup-box {
+    transform:scale(1);
+}
+</style>
+</head>
+
+<body>
+
+<div class="overlay"></div>
+
+<div class="container">
+<h2>🔥 Typing Battle Arena</h2>
+
+<input id="username" placeholder="Enter name">
+
+<select id="timeSelect">
+<option value="30">30 sec</option>
+<option value="60">1 min</option>
+<option value="300">5 min</option>
+<option value="600">10 min</option>
+</select>
+
+<button onclick="startTest()">Start</button>
+
+<div id="textDisplay"></div>
+
+<textarea id="inputArea" disabled placeholder="Start typing..."></textarea>
+
+<div class="stats">
+<span>⏱ <span id="time">0</span></span>
+<span>⚡ <span id="wpm">0</span></span>
+<span>🎯 <span id="accuracy">100</span>%</span>
+</div>
+
+<h3>🏆 Leaderboard</h3>
+<ul id="leaderboard"></ul>
+</div>
+
+<!-- POPUP -->
+<div class="popup" id="popup">
+<div class="popup-box">
+<h2>⏰ Time's Up!</h2>
+<p id="result"></p>
+<button onclick="closePopup()">Close</button>
+</div>
+</div>
+
+<script>
+let timer, timeLeft, started=false, startTime;
+let currentText="";
+
+function generateText(){
+    const data=[
+        "In a quiet digital world, a developer mastered typing speed and precision.",
+        "Every keystroke builds accuracy, rhythm, and confidence.",
+        "Only focused minds win the typing battle arena.",
+        "Consistency is the key to becoming fast and accurate."
+    ];
+    return data.sort(()=>0.5-Math.random()).join(" ");
+}
+
+function renderText(text,typed){
+    let out="";
+    for(let i=0;i<text.length;i++){
+        if(i<typed.length){
+            out+=typed[i]===text[i]
+            ?`<span class="correct">${text[i]}</span>`
+            :`<span class="wrong">${text[i]}</span>`;
+        } else out+=text[i];
+    }
+    document.getElementById("textDisplay").innerHTML=out;
+}
+
+function startTest(){
+    let name=document.getElementById("username").value;
+    if(!name) return alert("Enter name");
+
+    resetTest();
+
+    currentText=generateText();
+    renderText(currentText,"");
+
+    timeLeft=parseInt(document.getElementById("timeSelect").value);
+    document.getElementById("time").innerText=timeLeft;
+
+    document.getElementById("inputArea").disabled=false;
+    document.getElementById("inputArea").focus();
+
+    started=true;
+    startTime=Date.now();
+
+    timer=setInterval(()=>{
+        timeLeft--;
+        document.getElementById("time").innerText=timeLeft;
+        calculateStats();
+
+        if(timeLeft<=0){
+            clearInterval(timer);
+            finishTest();
+        }
+    },1000);
+}
+
+document.getElementById("inputArea").addEventListener("input",e=>{
+    if(!started) return;
+    renderText(currentText,e.target.value);
+});
+
+document.getElementById("inputArea").addEventListener("paste",e=>e.preventDefault());
+
+function calculateStats(){
+    let typed=document.getElementById("inputArea").value;
+    let timeUsed=(Date.now()-startTime)/1000;
+
+    let words=typed.trim().split(/\s+/).filter(Boolean).length;
+    let wpm=Math.round((words/timeUsed)*60)||0;
+
+    document.getElementById("wpm").innerText=wpm;
+
+    let correct=0;
+    for(let i=0;i<typed.length;i++){
+        if(typed[i]===currentText[i]) correct++;
+    }
+
+    let accuracy=typed.length
+    ?Math.round((correct/typed.length)*100)
+    :100;
+
+    document.getElementById("accuracy").innerText=accuracy;
+}
+
+async function finishTest(){
+    let name=document.getElementById("username").value;
+    let wpm=document.getElementById("wpm").innerText;
+
+    document.getElementById("result").innerText=`${name} - ${wpm} WPM`;
+
+    document.getElementById("popup").classList.add("show");
+
+    await fetch("https://typing-backend-5p5b.onrender.com/submit",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({name,wpm})
+    });
+
+    loadLeaderboard();
+}
+
+function closePopup(){
+    document.getElementById("popup").classList.remove("show");
+}
+
+async function loadLeaderboard(){
+    let res=await fetch("https://typing-backend-5p5b.onrender.com/leaderboard");
+    let data=await res.json();
+
+    let list=document.getElementById("leaderboard");
+    list.innerHTML="";
+
+    data.forEach(s=>{
+        let li=document.createElement("li");
+        li.textContent=`${s.name} - ${s.wpm}`;
+        list.appendChild(li);
+    });
+}
+
+function resetTest(){
+    clearInterval(timer);
+    document.getElementById("inputArea").value="";
+    document.getElementById("inputArea").disabled=true;
+    document.getElementById("textDisplay").innerHTML="";
+}
+
+loadLeaderboard();
+</script>
+
+</body>
+</html>
